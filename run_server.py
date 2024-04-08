@@ -2,13 +2,10 @@ import argparse
 import json
 import os
 import signal
-import stat
 import subprocess
 import sys
 from pathlib import Path
 
-from qwen_agent.log import logger
-from qwen_agent.utils.utils import get_local_ip
 from qwen_server.schema import GlobalConfig
 
 
@@ -47,20 +44,6 @@ def parse_args():
     return args
 
 
-def _fix_secure_write_for_code_interpreter(code_interpreter_ws):
-    if 'linux' in sys.platform.lower():
-        fname = os.path.join(code_interpreter_ws, 'test_file_permission.txt')
-        if os.path.exists(fname):
-            os.remove(fname)
-        with os.fdopen(
-                os.open(fname, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o0600),
-                'w') as f:
-            f.write('test')
-        file_mode = stat.S_IMODE(os.stat(fname).st_mode) & 0o6677
-        if file_mode != 0o0600:
-            os.environ['JUPYTER_ALLOW_INSECURE_WRITES'] = '1'
-
-
 def update_config(server_config, args, server_config_path):
     server_config.server.model_server = args.model_server
     server_config.server.api_key = args.api_key
@@ -87,8 +70,6 @@ def main():
         server_config = GlobalConfig(**server_config)
     server_config = update_config(server_config, args, server_config_path)
 
-    logger.info(server_config)
-
     os.makedirs(server_config.path.work_space_root, exist_ok=True)
     os.makedirs(server_config.path.database_root, exist_ok=True)
     os.makedirs(server_config.path.download_root, exist_ok=True)
@@ -99,6 +80,10 @@ def main():
         server_config.path.code_interpreter_ws)
     os.environ['M6_CODE_INTERPRETER_WORK_DIR'] = code_interpreter_work_dir
 
+    from qwen_agent.log import logger
+    from qwen_agent.utils.utils import get_local_ip
+    logger.info(server_config)
+
     if args.server_host == '0.0.0.0':
         #static_url = get_local_ip()
         static_url = '106.15.227.217'
@@ -106,9 +91,6 @@ def main():
         static_url = args.server_host
     static_url = f'http://{static_url}:{server_config.server.fast_api_port}/static'
     os.environ['M6_CODE_INTERPRETER_STATIC_URL'] = static_url
-
-    _fix_secure_write_for_code_interpreter(
-        server_config.path.code_interpreter_ws)
 
     servers = {
         'database':
@@ -128,11 +110,13 @@ def main():
         ]),
     }
 
-    def signal_handler(_sig, _frame):
+    def signal_handler(sig_num, _frame):
         for v in servers.values():
             v.terminate()
         for k in list(servers.keys()):
             del servers[k]
+        if sig_num == signal.SIGINT:
+            raise KeyboardInterrupt()
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)

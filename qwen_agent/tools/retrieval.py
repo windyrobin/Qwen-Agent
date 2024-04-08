@@ -49,20 +49,25 @@ class Retrieval(BaseTool):
     def call(self,
              params: Union[str, dict],
              ignore_cache: bool = False,
-             max_token: int = 4000) -> List[dict]:
-        """
+             max_token: int = 4000) -> list:
+        """RAG tool.
+
         Step1: Parse and save files
         Step2: Retrieval related content according to query
 
-        :param params: files and query
-        :param ignore_cache: When set to True, overwrite the same documents that have been parsed before.
-        :param max_token: Maximum retrieval length.
-        :return: The parsed file content
+        Args:
+            params: The files and query.
+            ignore_cache: When set to True, overwrite the same documents that have been parsed before.
+            max_token: Maximum retrieval length.
+
+        Returns:
+            The retrieved file list.
         """
 
         params = self._verify_json_format_args(params)
-
-        files = json5.loads(params.get('files', []))
+        files = params.get('files', [])
+        if isinstance(files, str):
+            files = json5.loads(files)
         records = []
         for file in files:
             try:
@@ -86,11 +91,11 @@ class Retrieval(BaseTool):
     def _retrieve_content(self,
                           query: str,
                           records: List[RefMaterialInput],
-                          max_token=4000) -> str:
+                          max_token=4000) -> List[Dict]:
         single_max_token = int(max_token / len(records))
         _ref_list = []
         for record in records:
-            # retrieval for query
+            # Retrieval for query
             now_ref_list = self.search.call(params={'query': query},
                                             doc=record,
                                             max_token=single_max_token)

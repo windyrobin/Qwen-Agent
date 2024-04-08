@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -23,16 +24,25 @@ def get_local_ip():
     try:
         # doesn't even have to be reachable
         s.connect(('10.255.255.255', 1))
-        IP = s.getsockname()[0]
+        ip = s.getsockname()[0]
     except Exception:
-        IP = '127.0.0.1'
+        ip = '127.0.0.1'
     finally:
         s.close()
-    return IP
+    return ip
 
 
-def print_traceback():
-    logger.error(''.join(traceback.format_exception(*sys.exc_info())))
+def hash_sha256(key):
+    hash_object = hashlib.sha256(key.encode())
+    key = hash_object.hexdigest()
+    return key
+
+
+def print_traceback(is_error=True):
+    if is_error:
+        logger.error(''.join(traceback.format_exception(*sys.exc_info())))
+    else:
+        logger.warning(''.join(traceback.format_exception(*sys.exc_info())))
 
 
 def has_chinese_chars(data) -> bool:
@@ -52,15 +62,16 @@ def is_local_path(path):
     return True
 
 
-def save_url_to_local_work_dir(url, base_dir):
-    fn = get_basename_from_url(url)
-    new_path = os.path.join(base_dir, fn)
+def save_url_to_local_work_dir(url, base_dir, new_name=''):
+    if not new_name:
+        new_name = get_basename_from_url(url)
+    new_path = os.path.join(base_dir, new_name)
     if os.path.exists(new_path):
         os.remove(new_path)
-    logger.info(f'download {url} to {base_dir}')
+    logger.info(f'download {url} to {new_path}')
     start_time = datetime.datetime.now()
     if is_local_path(url):
-        shutil.copy(url, base_dir)
+        shutil.copy(url, new_path)
     else:
         headers = {
             'User-Agent':
@@ -71,7 +82,9 @@ def save_url_to_local_work_dir(url, base_dir):
             with open(new_path, 'wb') as file:
                 file.write(response.content)
         else:
-            print_traceback()
+            raise ValueError(
+                'Can not download this file. Please check your network or the file link.'
+            )
     end_time = datetime.datetime.now()
     logger.info(f'Time: {str(end_time - start_time)}')
     return new_path
@@ -107,13 +120,14 @@ def get_current_date_str(
 
 
 def save_text_to_file(path, text):
-    try:
-        with open(path, 'w', encoding='utf-8') as fp:
-            fp.write(text)
-        return 'SUCCESS'
-    except Exception as ex:
-        print_traceback()
-        return ex
+    with open(path, 'w', encoding='utf-8') as fp:
+        fp.write(text)
+
+
+def read_text_from_file(path):
+    with open(path, 'r', encoding='utf-8') as file:
+        file_content = file.read()
+    return file_content
 
 
 def contains_html_tags(text):
@@ -123,18 +137,31 @@ def contains_html_tags(text):
 
 def get_file_type(path):
     # This is a temporary plan
+    if is_local_path(path):
+        try:
+            content = read_text_from_file(path)
+        except Exception:
+            print_traceback()
+            return 'Unknown'
 
-    content = read_text_from_file(path)
-    if contains_html_tags(content):
-        return 'html'
+        if contains_html_tags(content):
+            return 'html'
+        else:
+            return 'Unknown'
     else:
-        return 'Unknown'
-
-
-def read_text_from_file(path):
-    with open(path, 'r', encoding='utf-8') as file:
-        file_content = file.read()
-    return file_content
+        headers = {
+            'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
+        }
+        response = requests.get(path, headers=headers)
+        if response.status_code == 200:
+            if contains_html_tags(response.text):
+                return 'html'
+            else:
+                return 'Unknown'
+        else:
+            print_traceback()
+            return 'Unknown'
 
 
 ignore_words = [
@@ -247,7 +274,7 @@ def parse_latest_plugin_call(text):
     return plugin_name, plugin_args, text
 
 
-def parser_function(function: Dict) -> str:
+def get_function_description(function: Dict) -> str:
     """
     Text description of function
     """
@@ -255,18 +282,24 @@ def parser_function(function: Dict) -> str:
         'zh':
         '### {name_for_human}\n\n{name_for_model}: {description_for_model} 输入参数：{parameters} {args_format}',
         'en':
-        '### {name_for_human}\n\n{name_for_model}: {description_for_model} Parameters：{parameters} {args_format}'
+        '### {name_for_human}\n\n{name_for_model}: {description_for_model} Parameters: {parameters} {args_format}'
     }
-    if has_chinese_chars(function['description']):
+    if has_chinese_chars(function):
         tool_desc = tool_desc_template['zh']
     else:
         tool_desc = tool_desc_template['en']
-    return tool_desc.format(name_for_human=function['name_for_human'],
-                            name_for_model=function['name'],
+
+    name = function.get('name', None)
+    name_for_human = function.get('name_for_human', name)
+    name_for_model = function.get('name_for_model', name)
+    assert name_for_human and name_for_model
+    args_format = function.get('args_format', '')
+    return tool_desc.format(name_for_human=name_for_human,
+                            name_for_model=name_for_model,
                             description_for_model=function['description'],
                             parameters=json.dumps(function['parameters'],
                                                   ensure_ascii=False),
-                            args_format=function['args_format'])
+                            args_format=args_format).rstrip()
 
 
 def format_knowledge_to_source_and_content(

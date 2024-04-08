@@ -1,13 +1,24 @@
-# need refactor
-
 import datetime
 import json
 import os
 from pathlib import Path
 
-import add_qwen_libs  # NOQA
-import gradio as gr
+try:
+    import gradio as gr
+    if gr.__version__ < '3.50' or gr.__version__ >= '4.0':
+        raise ImportError(
+            'Incompatible gradio version detected. '
+            'Please install the correct version with: pip install "gradio>=3.50,<4.0"'
+        )
+except (ModuleNotFoundError, AttributeError):
+    raise ImportError(
+        'Please install gradio by: pip install "gradio>=3.50,<4.0"')
+import json5
 
+try:
+    import add_qwen_libs  # NOQA
+except ImportError:
+    pass
 from qwen_agent.agents import ArticleAgent, DocQAAgent, ReActChat
 from qwen_agent.llm import get_chat_model
 from qwen_agent.llm.base import ModelServiceError
@@ -119,7 +130,7 @@ def add_file(file, chosen_plug):
                                ignore_cache=True)
             data = last[-1]['content']
             if isinstance(data, str):
-                data.json5.loads(data)
+                data = json5.loads(data)
             assert len(data) == 1
             title = data[-1]['title']
             save_browsing_meta_data(file.name, title, meta_file)
@@ -177,11 +188,11 @@ def download_text(text):
     current_time = now.strftime('%Y-%m-%d_%H-%M-%S')
     filename = f'file_{current_time}.md'
     save_path = os.path.join(server_config.path.download_root, filename)
-    rsp = save_text_to_file(save_path, text)
-    if rsp == 'SUCCESS':
+    try:
+        save_text_to_file(save_path, text)
         gr.Info(f'Saved to {save_path}')
-    else:
-        gr.Error("Can't Save: ", rsp)
+    except Exception as ex:
+        gr.Error(f'Failed to save this file.\n {str(ex)}')
 
 
 def choose_plugin(chosen_plugin):
@@ -211,11 +222,34 @@ def pure_bot(history):
             for chunk in output_beautify.convert_to_full_str_stream(response):
                 history[-1][1] = chunk
                 yield history
-        except ModelServiceError:
-            history[-1][1] = '模型调用出错，可能的原因有：未正确配置模型参数，或输入数据不安全等'
+        except ModelServiceError as ex:
+            history[-1][1] = str(ex)
             yield history
         except Exception as ex:
             raise ValueError(ex)
+
+
+def keep_only_files_for_name(messages, name):
+    new_messages = []
+    for message in messages:
+        if message['role'] == 'user' and ('name' not in message
+                                          or message['name'] != name):
+            # rm files
+            if isinstance(message['content'], list):
+                new_content = []
+                for item in message['content']:
+                    for k, v in item.items():
+                        if k != 'file':  # rm files
+                            new_content.append(item)
+                new_messages.append({
+                    'role': message['role'],
+                    'content': new_content
+                })
+            else:
+                new_messages.append(message)
+        else:
+            new_messages.append(message)
+    return new_messages
 
 
 def bot(history, chosen_plug):
@@ -236,15 +270,27 @@ def bot(history, chosen_plug):
                         'text': history[-1][0]
                     }, {
                         'file': app_global_para['uploaded_ci_file']
-                    }]
+                    }],
+                    'name':
+                    'ci'
                 }]
-                messages = app_global_para['messages'] + message
             else:
+<<<<<<< HEAD
                 message = [{'role': 'user', 'content': history[-1][0]}]
                 messages = app_global_para['messages'] + message
             #func_assistant = ReActChat(function_list=['code_interpreter'],
             #func_assistant = ReActChat(function_list=['code_interpreter', 'sql_interpreter'],
             func_assistant = ReActChat(function_list=['code_interpreter', 'sql_interpreter', 'local_cache'],
+=======
+                message = [{
+                    'role': 'user',
+                    'content': history[-1][0],
+                    'name': 'ci'
+                }]
+            messages = keep_only_files_for_name(app_global_para['messages'],
+                                                'ci') + message
+            func_assistant = ReActChat(function_list=['code_interpreter'],
+>>>>>>> 55547b98313c153c451c04477b4163723219fb38
                                        llm=llm_config)
             try:
                 response = func_assistant.run(messages=messages)
@@ -253,8 +299,8 @@ def bot(history, chosen_plug):
                     history[-1][1] = chunk
                     #print('cur chuck:', chunk)
                     yield history
-            except ModelServiceError:
-                history[-1][1] = '模型调用出错，可能的原因有：未正确配置模型参数，或输入数据不安全等'
+            except ModelServiceError as ex:
+                history[-1][1] = str(ex)
                 yield history
             except Exception as ex:
                 raise ValueError(ex)
@@ -276,8 +322,8 @@ def bot(history, chosen_plug):
                         response):
                     history[-1][1] = chunk
                     yield history
-            except ModelServiceError:
-                history[-1][1] = '模型调用出错，可能的原因有：未正确配置模型参数，或输入数据不安全等'
+            except ModelServiceError as ex:
+                history[-1][1] = str(ex)
                 yield history
             except Exception as ex:
                 raise ValueError(ex)
@@ -311,8 +357,8 @@ def generate(context):
             }])
             for chunk in output_beautify.convert_to_full_str_stream(response):
                 yield chunk
-        except ModelServiceError:
-            yield '模型调用出错，可能的原因有：未正确配置模型参数，或输入数据不安全等'
+        except ModelServiceError as ex:
+            yield str(ex)
         except Exception as ex:
             raise ValueError(ex)
 
@@ -327,8 +373,8 @@ def generate(context):
             }])
             for chunk in output_beautify.convert_to_full_str_stream(response):
                 yield chunk
-        except ModelServiceError:
-            yield '模型调用出错，可能的原因有：未正确配置模型参数，或输入数据不安全等'
+        except ModelServiceError as ex:
+            yield str(ex)
         except Exception as ex:
             raise ValueError(ex)
 
@@ -359,8 +405,8 @@ def generate(context):
                 full_article=full_article)
             for chunk in output_beautify.convert_to_full_str_stream(response):
                 yield chunk
-        except ModelServiceError:
-            yield '模型调用出错，可能的原因有：未正确配置模型参数，或输入数据不安全等'
+        except ModelServiceError as ex:
+            yield str(ex)
         except Exception as ex:
             raise ValueError(ex)
 

@@ -1,10 +1,14 @@
+import copy
 from typing import Dict, Iterator, List, Optional, Tuple, Union
 
-from qwen_agent.agents import Assistant
+from qwen_agent.agents.fncall_agent import MAX_LLM_CALL_PER_RUN, FnCallAgent
 from qwen_agent.llm import BaseChatModel
 from qwen_agent.llm.schema import (ASSISTANT, CONTENT, DEFAULT_SYSTEM_MESSAGE,
-                                   ROLE)
-from qwen_agent.utils.utils import parser_function
+                                   ROLE, ContentItem, Message)
+from qwen_agent.tools import BaseTool
+from qwen_agent.utils.utils import (get_basename_from_url,
+                                    get_function_description,
+                                    has_chinese_chars)
 
 PROMPT_REACT = """Answer the following questions as best you can. You have access to the following tools:
 
@@ -26,47 +30,67 @@ Begin!
 Question: {query}"""
 
 
-class ReActChat(Assistant):
-    """
-        Using ReAct format to call tools
-    """
+class ReActChat(FnCallAgent):
+    """This agent use ReAct format to call tools"""
 
     def __init__(self,
-                 function_list: Optional[List[Union[str, Dict]]] = None,
+                 function_list: Optional[List[Union[str, Dict,
+                                                    BaseTool]]] = None,
                  llm: Optional[Union[Dict, BaseChatModel]] = None,
                  system_message: Optional[str] = DEFAULT_SYSTEM_MESSAGE,
+                 name: Optional[str] = None,
+                 description: Optional[str] = None,
                  files: Optional[List[str]] = None):
         super().__init__(function_list=function_list,
                          llm=llm,
                          system_message=system_message,
+                         name=name,
+                         description=description,
                          files=files)
         stop = self.llm.generate_cfg.get('stop', [])
         fn_stop = ['Observation:', 'Observation:\n']
         self.llm.generate_cfg['stop'] = stop + [
             x for x in fn_stop if x not in stop
         ]
-        assert not self.llm.model.startswith(
-            'qwen-vl'), 'Now this React format does not support VL LLM'
 
     def _run(self,
-             messages: List[Dict],
+             messages: List[Message],
              lang: str = 'en',
-             **kwargs) -> Iterator[List[Dict]]:
-        *_, last = self.mem.run(messages=messages)
+             **kwargs) -> Iterator[List[Message]]:
+        ori_messages = messages
         messages = self._preprocess_react_prompt(messages)
 
+<<<<<<< HEAD
         max_turn = 10
+=======
+        num_llm_calls_available = MAX_LLM_CALL_PER_RUN
+>>>>>>> 55547b98313c153c451c04477b4163723219fb38
         response = []
-        while True and max_turn > 0:
-            max_turn -= 1
+        while True and num_llm_calls_available > 0:
+            num_llm_calls_available -= 1
             output_stream = self._call_llm(messages=messages)
             output = []
+
+            # Yield the streaming response
+            response_tmp = copy.deepcopy(response)
             for output in output_stream:
-                yield response + output
-            response.extend(output)
+                if output:
+                    if not response_tmp:
+                        yield output
+                    else:
+                        response_tmp[-1][CONTENT] = response[-1][
+                            CONTENT] + output[-1][CONTENT]
+                        yield response_tmp
+            # Record the incremental response
             assert len(output) == 1 and output[-1][ROLE] == ASSISTANT
+            if not response:
+                response += output
+            else:
+                response[-1][CONTENT] += output[-1][CONTENT]
+
             output = output[-1][CONTENT]
 
+<<<<<<< HEAD
             print('origin output:', output)
             use_tool, action, action_input, output = self._detect_tool(output)
             print('use_tool: ', use_tool)
@@ -85,14 +109,35 @@ class ReActChat(Assistant):
                 observation = self._call_tool(action, action_input)
                 print('observation is :', observation)
                 observation = f'\nObservation: {observation}\nThought:'
+=======
+            use_tool, action, action_input, text = self._detect_tool(output)
+
+            if use_tool:
+                observation = self._call_tool(action,
+                                              action_input,
+                                              messages=ori_messages)
+                observation = f'\nObservation: {observation}\nThought: '
+>>>>>>> 55547b98313c153c451c04477b4163723219fb38
                 response[-1][CONTENT] += observation
                 print('response:', response)
                 yield response
                 if isinstance(messages[-1][CONTENT], list):
+                    if not ('text' in messages[-1][CONTENT][-1]
+                            and messages[-1][CONTENT][-1]['text'].endswith(
+                                '\nThought: ')):
+                        if not text.startswith('\n'):
+                            text = '\n' + text
                     messages[-1][CONTENT].append(
-                        {'text': output + observation})
+                        ContentItem(
+                            text=text +
+                            f'\nAction: {action}\nAction Input:{action_input}'
+                            + observation))
                 else:
-                    messages[-1][CONTENT] += output + observation
+                    if not (messages[-1][CONTENT].endswith('\nThought: ')):
+                        if not text.startswith('\n'):
+                            text = '\n' + text
+                    messages[-1][
+                        CONTENT] += text + f'\nAction: {action}\nAction Input:{action_input}' + observation
             else:
                 break
 
@@ -112,13 +157,15 @@ class ReActChat(Assistant):
             k = text.rfind(special_obs_token)
             func_name = text[i + len(special_func_token):j].strip()
             func_args = text[j + len(special_args_token):k].strip()
-            text = text[:k]  # Discard '\nObservation:'.
+            text = text[:i]  # Return the response before tool call
 
         return (func_name is not None), func_name, func_args, text
 
-    def _preprocess_react_prompt(self, messages: List[Dict]) -> List[Dict]:
+    def _preprocess_react_prompt(self,
+                                 messages: List[Message]) -> List[Message]:
+        messages = copy.deepcopy(messages)
         tool_descs = '\n\n'.join(
-            parser_function(func.function)
+            get_function_description(func.function)
             for func in self.function_map.values())
         tool_names = ','.join(tool.name for tool in self.function_map.values())
 
@@ -131,15 +178,33 @@ class ReActChat(Assistant):
         else:
             query = ''
             new_content = []
+            files = []
             for item in messages[-1][CONTENT]:
-                for k, v in item.items():
+                for k, v in item.model_dump().items():
                     if k == 'text':
                         query += v
+                    elif k == 'file':
+                        files.append(v)
                     else:
                         new_content.append(item)
+            if files:
+                has_zh = has_chinese_chars(query)
+                upload = []
+                for f in [get_basename_from_url(f) for f in files]:
+                    if has_zh:
+                        upload.append(f'[文件]({f})')
+                    else:
+                        upload.append(f'[file]({f})')
+                upload = ' '.join(upload)
+                if has_zh:
+                    upload = f'（上传了 {upload}）\n\n'
+                else:
+                    upload = f'(Uploaded {upload})\n\n'
+                query = upload + query
+
             prompt = PROMPT_REACT.format(tool_descs=tool_descs,
                                          tool_names=tool_names,
                                          query=query)
-            new_content.insert(0, {'text': prompt})
+            new_content.insert(0, ContentItem(text=prompt))
             messages[-1][CONTENT] = new_content
             return messages

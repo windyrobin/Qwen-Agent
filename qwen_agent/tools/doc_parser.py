@@ -1,4 +1,3 @@
-import copy
 import datetime
 import json
 import os
@@ -13,8 +12,8 @@ from qwen_agent.log import logger
 from qwen_agent.tools.base import BaseTool, register_tool
 from qwen_agent.tools.storage import Storage
 from qwen_agent.utils.doc_parser import parse_doc, parse_html_bs
-from qwen_agent.utils.tokenization_qwen import count_tokens
-from qwen_agent.utils.utils import (get_file_type, print_traceback,
+from qwen_agent.utils.utils import (get_file_type, hash_sha256, is_local_path,
+                                    print_traceback,
                                     save_url_to_local_work_dir)
 
 
@@ -77,7 +76,8 @@ def process_file(url: str, db: Storage = None):
     if url.split('.')[-1].lower() in ['pdf', 'docx', 'pptx']:
         date1 = datetime.datetime.now()
 
-        if url.startswith('https://') or url.startswith('http://'):
+        if url.startswith('https://') or url.startswith('http://') or re.match(
+                r'^[A-Za-z]:\\', url) or re.match(r'^[A-Za-z]:/', url):
             pdf_path = url
         else:
             parsed_url = urlparse(url)
@@ -85,7 +85,16 @@ def process_file(url: str, db: Storage = None):
             pdf_path = sanitize_chrome_file_path(pdf_path)
 
         try:
-            pdf_content = parse_doc(pdf_path)
+            if not is_local_path(url):
+                # download
+                file_tmp_path = save_url_to_local_work_dir(
+                    pdf_path,
+                    db.root,
+                    new_name=hash_sha256(url) + '.' +
+                    pdf_path.split('.')[-1].lower())
+                pdf_content = parse_doc(file_tmp_path)
+            else:
+                pdf_content = parse_doc(pdf_path)
             date2 = datetime.datetime.now()
             logger.info('Parsing pdf time: ' + str(date2 - date1))
             content = pdf_content
@@ -95,10 +104,11 @@ def process_file(url: str, db: Storage = None):
             print_traceback()
             return 'failed'
     else:
-        try:
-            file_tmp_path = save_url_to_local_work_dir(url, db.root)
-        except Exception:
-            raise ValueError('Can not download this file')
+        if not is_local_path(url):
+            file_tmp_path = save_url_to_local_work_dir(
+                url, db.root, new_name=hash_sha256(url))
+        else:
+            file_tmp_path = url
         file_source = get_file_type(file_tmp_path)
         if file_source == 'html':
             try:
@@ -122,25 +132,9 @@ def process_file(url: str, db: Storage = None):
                         checked=True,
                         session=[]).to_dict()
     new_record_str = json.dumps(new_record, ensure_ascii=False)
-    db.put(url, new_record_str)
+    db.put(hash_sha256(url), new_record_str)
 
     return new_record
-
-
-def token_counter_backup(records):
-    new_records = []
-    for record in records:
-        if not record['raw']:
-            continue
-        if 'token' not in record['raw'][0]['page_content']:
-            tmp = []
-            for page in record['raw']:
-                new_page = copy.deepcopy(page)
-                new_page['token'] = count_tokens(page['page_content'])
-                tmp.append(new_page)
-            record['raw'] = tmp
-        new_records.append(record)
-    return new_records
 
 
 @register_tool('doc_parser')
@@ -157,25 +151,23 @@ class DocParser(BaseTool):
         super().__init__(cfg)
         self.data_root = self.cfg.get(
             'path', 'workspace/default_doc_parser_data_path')
-        self.db = Storage({'path': self.data_root})
+        self.db = Storage({'storage_root_path': self.data_root})
 
     def call(self,
              params: Union[str, dict],
              ignore_cache: bool = False) -> dict:
-        """
-        Parse file by url, and return the formatted content
-
-        :param params: The url of the file
-        :param ignore_cache: When set to True, overwrite the same documents that have been parsed before.
-        :return: The parsed file content
-        """
+        """Parse file by url, and return the formatted content."""
 
         params = self._verify_json_format_args(params)
 
-        record = self.db.get(params['url'])
-        if record and not ignore_cache:
-            record = json5.loads(record)
-        else:
-            # The url has not been parsed or ignore_cache: need to parse and save doc
+        if ignore_cache:
             record = process_file(url=params['url'], db=self.db)
+        else:
+            try:
+                record = self.db.get(hash_sha256(params['url']))
+                record = json5.loads(record)
+
+            except Exception:
+                record = process_file(url=params['url'], db=self.db)
+
         return record

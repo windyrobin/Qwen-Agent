@@ -2,17 +2,18 @@ from typing import Dict, Optional
 
 from qwen_agent.llm.base import LLM_REGISTRY
 
-from .base import BaseChatModel
+from .base import BaseChatModel, ModelServiceError
 from .oai import TextChatAtOAI
 from .qwen_dashscope import QwenChatAtDS
 from .qwenvl_dashscope import QwenVLChatAtDS
 
 
 def get_chat_model(cfg: Optional[Dict] = None) -> BaseChatModel:
-    """
+    """The interface of instantiating LLM objects.
 
-    :param cfg: cfg example:
-            llm_cfg = {
+    Args:
+        cfg: The LLM configuration, one example is:
+          llm_cfg = {
             # Use the model service provided by DashScope:
             'model': 'qwen-max',
             'model_server': 'dashscope',
@@ -23,8 +24,10 @@ def get_chat_model(cfg: Optional[Dict] = None) -> BaseChatModel:
             'generate_cfg': {
                 'top_p': 0.8
             }
-        }
-    :return: An llm object
+          }
+
+    Returns:
+        LLM object.
     """
     cfg = cfg or {}
     if 'model_type' in cfg:
@@ -32,7 +35,7 @@ def get_chat_model(cfg: Optional[Dict] = None) -> BaseChatModel:
         if model_type in LLM_REGISTRY:
             return LLM_REGISTRY[model_type](cfg)
         else:
-            ValueError(
+            raise ValueError(
                 f'Please set model_type from {str(LLM_REGISTRY.keys())}')
 
     # Deduce model_type from model and model_server if model_type is not provided:
@@ -52,10 +55,14 @@ def get_chat_model(cfg: Optional[Dict] = None) -> BaseChatModel:
         model_type = 'qwen_dashscope'
         return LLM_REGISTRY[model_type](cfg)
 
-    raise ValueError(f'Please set model_type from {str(LLM_REGISTRY.keys())}')
+    raise ValueError(f'Invalid model cfg: {cfg}')
 
 
 __all__ = [
-    'BaseChatModel', 'QwenChatAtDS', 'TextChatAtOAI', 'QwenVLChatAtDS',
-    'get_chat_model'
+    'BaseChatModel',
+    'QwenChatAtDS',
+    'TextChatAtOAI',
+    'QwenVLChatAtDS',
+    'get_chat_model',
+    'ModelServiceError',
 ]

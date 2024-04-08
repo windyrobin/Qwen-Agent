@@ -32,5 +32,6 @@ build/*
 dist/*
 
 examples/*.ipynb
-*/workspace/*
+**/workspace/*
 test/*
+tests/env.sh

@@ -1,7 +1,8 @@
-from typing import Dict, Iterator, List
+import copy
+from typing import Iterator, List
 
 from qwen_agent import Agent
-from qwen_agent.llm.schema import CONTENT
+from qwen_agent.llm.schema import CONTENT, Message
 
 PROMPT_TEMPLATE_ZH = """
 你是一个写作助手，任务是充分理解参考资料，从而完成写作。
@@ -33,10 +34,11 @@ PROMPT_TEMPLATE = {
 class OutlineWriting(Agent):
 
     def _run(self,
-             messages: List[Dict],
+             messages: List[Message],
              knowledge: str = '',
              lang: str = 'en',
-             **kwargs) -> Iterator[List[Dict]]:
+             **kwargs) -> Iterator[List[Message]]:
+        messages = copy.deepcopy(messages)
         messages[-1][CONTENT] = PROMPT_TEMPLATE[lang].format(
             ref_doc=knowledge,
             user_request=messages[-1][CONTENT],

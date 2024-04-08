@@ -3,7 +3,11 @@ import multiprocessing
 import os
 from pathlib import Path
 
-import add_qwen_libs  # NOQA
+try:
+    import add_qwen_libs  # NOQA
+except ImportError:
+    pass
+import json5
 import jsonlines
 import uvicorn
 from fastapi import FastAPI, Request
@@ -13,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from qwen_agent.log import logger
 from qwen_agent.memory import Memory
-from qwen_agent.utils.utils import get_local_ip
+from qwen_agent.utils.utils import get_local_ip, hash_sha256, save_text_to_file
 from qwen_server.schema import GlobalConfig
 from qwen_server.utils import (rm_browsing_meta_data, save_browsing_meta_data,
                                save_history)
@@ -56,6 +60,8 @@ history_dir = os.path.join(server_config.path.work_space_root, 'history')
 
 
 def update_pop_url(url: str):
+    if not url.lower().endswith('.pdf'):
+        url = os.path.join(server_config.path.download_root, hash_sha256(url))
     new_line = {'url': url}
 
     with jsonlines.open(cache_file_popup_url, mode='w') as writer:
@@ -75,9 +81,19 @@ def change_checkbox_state(key):
 
 def cache_page(**kwargs):
     url = kwargs.get('url', '')
-    save_browsing_meta_data(url, '[CACHING]', meta_file)
-    # rm history
-    save_history(None, url, history_dir)
+
+    page_content = kwargs.get('content', '')
+    if page_content and not url.lower().endswith('.pdf'):
+        # map to local url
+        url = os.path.join(server_config.path.download_root, hash_sha256(url))
+        save_browsing_meta_data(url, '[CACHING]', meta_file)
+        # rm history
+        save_history(None, url, history_dir)
+        save_text_to_file(url, page_content)
+    else:
+        save_browsing_meta_data(url, '[CACHING]', meta_file)
+        # rm history
+        save_history(None, url, history_dir)
     try:
         *_, last = mem.run([{
             'role': 'user',
@@ -88,7 +104,7 @@ def cache_page(**kwargs):
                            ignore_cache=True)
         data = last[-1]['content']
         if isinstance(data, str):
-            data.json5.loads(data)
+            data = json5.loads(data)
         assert len(data) == 1
         title = data[-1]['title']
         save_browsing_meta_data(url, title, meta_file)
@@ -120,5 +136,4 @@ async def web_listening(request: Request):
 if __name__ == '__main__':
     uvicorn.run(app='database_server:app',
                 host=server_config.server.server_host,
-                port=server_config.server.fast_api_port,
-                reload=True)
+                port=server_config.server.fast_api_port)

@@ -1,43 +1,44 @@
 from abc import ABC
-from typing import Dict, List
+from typing import List
 
-from qwen_agent.llm.base import BaseChatModel
+from qwen_agent.llm.function_calling import BaseFnCallModel
 
-from .schema import ASSISTANT, CONTENT, FUNCTION, ROLE, SYSTEM, USER
+from .schema import ASSISTANT, FUNCTION, SYSTEM, USER, Message
 
 
-class BaseTextChatModel(BaseChatModel, ABC):
+class BaseTextChatModel(BaseFnCallModel, ABC):
 
-    def _format_msg_for_llm(self, messages: List[Dict]) -> List[Dict]:
-        new_messages = []
-        for msg in messages:
-            role = msg[ROLE]
-            assert role in (USER, ASSISTANT, SYSTEM, FUNCTION)
-            if role == FUNCTION:
-                new_messages.append(msg)
-                continue
-            content = ''
-            if isinstance(msg[CONTENT], str):
-                content = msg[CONTENT]
-            elif isinstance(msg[CONTENT], list):
-                for item in msg[CONTENT]:
-                    for k, v in item.items():
-                        if k in ('box',
-                                 'text'):  # all content values that qwen needs
-                            content += v
-            else:
-                raise TypeError
-            if f'{FUNCTION}_call' in msg:
-                new_messages.append({
-                    ROLE: role,
-                    CONTENT: content,
-                    f'{FUNCTION}_call': msg[f'{FUNCTION}_call']
-                })
-            else:
-                new_messages.append({ROLE: role, CONTENT: content})
+    def _preprocess_messages(self, messages: List[Message]) -> List[Message]:
+        messages = super()._preprocess_messages(messages)
+        messages = format_as_text_messages(messages)
+        return messages
 
-        return new_messages
+    def _postprocess_messages(self, messages: List[Message],
+                              fncall_mode: bool) -> List[Message]:
+        messages = super()._postprocess_messages(messages,
+                                                 fncall_mode=fncall_mode)
+        messages = format_as_text_messages(messages)
+        return messages
 
-    @staticmethod
-    def _wrapper_text_to_message_list(text: str) -> List[Dict]:
-        return [{ROLE: ASSISTANT, CONTENT: text}]
+
+def format_as_text_messages(
+        multimodal_messages: List[Message]) -> List[Message]:
+    text_messages = []
+    for msg in multimodal_messages:
+        assert msg.role in (USER, ASSISTANT, SYSTEM, FUNCTION)
+        content = ''
+        if isinstance(msg.content, str):
+            content = msg.content
+        elif isinstance(msg.content, list):
+            for item in msg.content:
+                if item.text:
+                    content += item.text
+                # Discard multimodal content such as files and images
+        else:
+            raise TypeError
+        text_messages.append(
+            Message(role=msg.role,
+                    content=content,
+                    name=msg.name if msg.role == FUNCTION else None,
+                    function_call=msg.function_call))
+    return text_messages

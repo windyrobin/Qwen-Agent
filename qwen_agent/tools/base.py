@@ -3,15 +3,26 @@ from typing import Dict, List, Optional, Union
 
 import json5
 
+from qwen_agent.utils.utils import logger
+
 TOOL_REGISTRY = {}
 
 
-def register_tool(name):
+def register_tool(name, allow_overwrite=False):
 
     def decorator(cls):
         if name in TOOL_REGISTRY:
+            if allow_overwrite:
+                logger.warning(
+                    f'Tool `{name}` already exists! Overwriting with class {cls}.'
+                )
+            else:
+                raise ValueError(
+                    f'Tool `{name}` already exists! Please ensure that the tool name is unique.'
+                )
+        if cls.name and (cls.name != name):
             raise ValueError(
-                f'tool {name} has a duplicate name! Please ensure that the tool name is unique.'
+                f'{cls.__name__}.name="{cls.name}" conflicts with @register_tool(name="{name}").'
             )
         cls.name = name
         TOOL_REGISTRY[name] = cls
@@ -28,6 +39,10 @@ class BaseTool(ABC):
 
     def __init__(self, cfg: Optional[Dict] = None):
         self.cfg = cfg or {}
+        if not self.name:
+            raise ValueError(
+                f'You must set {self.__class__.__name__}.name, either by @register_tool(name=...) or explicitly setting {self.__class__.__name__}.name'
+            )
 
         self.name_for_human = self.cfg.get('name_for_human', self.name)
         if not hasattr(self, 'args_format'):
@@ -36,24 +51,24 @@ class BaseTool(ABC):
         self.file_access = False
 
     @abstractmethod
-    def call(self, params: Union[str, dict], **kwargs):
-        """
-        The interface for calling tools
+    def call(self, params: Union[str, dict],
+             **kwargs) -> Union[str, list, dict]:
+        """The interface for calling tools.
 
-        :param params: the parameters of func_call
-        :param kwargs: additional parameters for calling tools
-        :return: the result returned by the tool, implemented in the subclass
+        Each tool needs to implement this function, which is the workflow of the tool.
+
+        Args:
+            params: The parameters of func_call.
+            kwargs: Additional parameters for calling tools.
+
+        Returns:
+            The result returned by the tool, implemented in the subclass.
         """
         raise NotImplementedError
 
     def _verify_json_format_args(self,
                                  params: Union[str, dict]) -> Union[str, dict]:
-        """
-        Verify the parameters of the function call
-
-        :param params: the parameters of func_call
-        :return: the str params or the legal dict params
-        """
+        """Verify the parameters of the function call"""
         try:
             if isinstance(params, str):
                 params_json = json5.loads(params)
@@ -68,11 +83,7 @@ class BaseTool(ABC):
         except Exception:
             raise ValueError('Parameters cannot be converted to Json Format!')
 
-    def _build_function(self):
-        """
-        The dict format after applying the template to the function, such as oai format
-
-        """
+    def _build_function(self) -> dict:
         return {
             'name_for_human': self.name_for_human,
             'name': self.name,

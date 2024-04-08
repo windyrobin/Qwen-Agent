@@ -9,9 +9,7 @@ from qwen_agent.utils.utils import get_split_word, parse_keyword
 
 
 class RefMaterialOutput(BaseModel):
-    """
-    The knowledge data format output from the retrieval
-    """
+    """The knowledge data format output from the retrieval"""
     url: str
     text: list
 
@@ -31,9 +29,7 @@ class RefMaterialInputItem(BaseModel):
 
 
 class RefMaterialInput(BaseModel):
-    """
-    The knowledge data format input to the retrieval
-    """
+    """The knowledge data format input to the retrieval"""
     url: str
     text: List[RefMaterialInputItem]
 
@@ -63,19 +59,11 @@ class SimilaritySearch(BaseTool):
              params: Union[str, dict],
              doc: Union[RefMaterialInput, str, List[str]] = None,
              max_token: int = 4000) -> dict:
-        """
-        This tool is usually used by doc_parser tool
-
-        :param params: The params of
-        :param doc: Knowledge base to be queried
-        :param max_token: the max token number
-        :return: RefMaterialOutput
-        """
         params = self._verify_json_format_args(params)
 
         query = params['query']
         if not doc:
-            return None
+            return {}
         if isinstance(doc, str):
             doc = [doc]
         if isinstance(doc, list):
@@ -135,13 +123,15 @@ class SimilaritySearch(BaseTool):
 
         return sim
 
-    def jaccard_similarity(self, list1: list, list2: list) -> int:
+    @staticmethod
+    def jaccard_similarity(list1: list, list2: list) -> int:
         s1 = set(list1)
         s2 = set(list2)
         return len(s1.intersection(s2))  # avoid text length impact
         # return len(s1.intersection(s2)) / len(s1.union(s2))  # jaccard similarity
 
-    def get_top(self, doc: RefMaterialInput, max_token=4000, **kwargs):
+    @staticmethod
+    def get_top(doc: RefMaterialInput, max_token=4000) -> dict:
         now_token = 0
         text = []
         for page in doc.text:

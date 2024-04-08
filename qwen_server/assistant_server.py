@@ -3,8 +3,21 @@ import os
 import time
 from pathlib import Path
 
-import add_qwen_libs  # NOQA
-import gradio as gr
+try:
+    import add_qwen_libs  # NOQA
+except ImportError:
+    pass
+
+try:
+    import gradio as gr
+    if gr.__version__ < '3.50' or gr.__version__ >= '4.0':
+        raise ImportError(
+            'Incompatible gradio version detected. '
+            'Please install the correct version with: pip install "gradio>=3.50,<4.0"'
+        )
+except (ModuleNotFoundError, AttributeError):
+    raise ImportError(
+        'Please install gradio by: pip install "gradio>=3.50,<4.0"')
 import jsonlines
 
 from qwen_agent.agents import DocQAAgent
@@ -65,8 +78,11 @@ def rm_text(history):
 def set_url():
     lines = []
     if not os.path.exists(cache_file_popup_url):
-        gr.Error('Do not add any pages!')
-    assert os.path.exists(cache_file_popup_url)
+        # Only able to remind the situation of first browsing failure
+        gr.Error(
+            'Oops, it seems that the page cannot be opened due to network issues.'
+        )
+
     for line in jsonlines.open(cache_file_popup_url):
         lines.append(line)
     logger.info('The current access page is: ' + lines[-1]['url'])
@@ -95,8 +111,8 @@ def bot(history):
             for chunk in output_beautify.convert_to_full_str_stream(response):
                 history[-1][1] = chunk
                 yield history
-        except ModelServiceError:
-            history[-1][1] = '模型调用出错，可能的原因有：未正确配置模型参数，或输入数据不安全等'
+        except ModelServiceError as ex:
+            history[-1][1] = str(ex)
             yield history
         except Exception as ex:
             raise ValueError(ex)
@@ -105,12 +121,12 @@ def bot(history):
 
 
 def init_chatbot():
-    time.sleep(0.5)
+    time.sleep(1)
     page_url = set_url()
     response = read_meta_data_by_condition(meta_file, url=page_url)
     if not response:
         gr.Info(
-            "Please add this page to Qwen's Reading List first! If you have already added it, it may be due to network or permission issues that caused failure"
+            "Please add this page to Qwen's Reading List first! If you have already added it, please reopen later..."
         )
     elif response == '[CACHING]':
         gr.Info('Please reopen later, Qwen is analyzing this page...')
@@ -118,7 +134,7 @@ def init_chatbot():
         return read_history(page_url, history_dir)
 
 
-def clear_session(history):
+def clear_session():
     page_url = set_url()
     save_history(None, page_url, history_dir)
     return None

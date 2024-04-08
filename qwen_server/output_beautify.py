@@ -2,12 +2,16 @@ from typing import Dict, Iterator, List
 
 import json5
 
-from qwen_agent.llm.schema import (ASSISTANT, CONTENT, FN_ARGS, FN_EXIT,
-                                   FN_NAME, FN_RESULT, FUNCTION, ROLE, SYSTEM,
+from qwen_agent.llm.schema import (ASSISTANT, CONTENT, FUNCTION, ROLE, SYSTEM,
                                    USER)
 from qwen_agent.log import logger
 from qwen_agent.utils.utils import (extract_code, extract_obs, extract_urls,
                                     print_traceback)
+
+FN_NAME = 'Action'
+FN_ARGS = 'Action Input'
+FN_RESULT = 'Observation'
+FN_EXIT = 'Response'
 
 
 def convert_fncall_to_text(messages: List[Dict]) -> List[Dict]:
@@ -85,9 +89,6 @@ def convert_to_full_str_stream(
         assert len(
             new_message_list) == 1 and new_message_list[0][ROLE] == ASSISTANT
         yield new_message_list[0][CONTENT]
-
-    # logger.debug('==== Outputted the last of message_list iter ===')
-    # logger.debug(json.dumps(message_list, ensure_ascii=False))
 
 
 def convert_to_delta_str_stream(

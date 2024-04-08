@@ -1,18 +1,19 @@
-import hashlib
 import os
 from typing import Dict, Optional, Union
 
+<<<<<<< HEAD
 import json5
 from qwen_agent.log import logger
 from qwen_agent.tools.base import BaseTool, register_tool
 from qwen_agent.utils.utils import (extract_code, print_traceback, read_text_from_file,
                                     save_text_to_file)
+=======
+from qwen_agent.tools.base import BaseTool, register_tool
+from qwen_agent.utils.utils import read_text_from_file, save_text_to_file
+>>>>>>> 55547b98313c153c451c04477b4163723219fb38
 
-
-def hash_sha256(key):
-    hash_object = hashlib.sha256(key.encode())
-    key = hash_object.hexdigest()
-    return key
+DEFAULT_STORAGE_PATH = 'workspace/default_data_path'
+SUCCESS_MESSAGE = 'SUCCESS'
 
 
 @register_tool('local_cache')
@@ -20,12 +21,16 @@ class Storage(BaseTool):
     """
     This is a special tool for data storage
     """
+<<<<<<< HEAD
     description = '数据在 本地缓存的实现, 读取、删除、保存、遍历， 支持txt或csv 格式'
     #parameters = [{
     #    'name': 'path',
     #    'type': 'string',
     #    'description': '数据存储的目录',
     #}, {
+=======
+    description = '存储和读取数据的工具'
+>>>>>>> 55547b98313c153c451c04477b4163723219fb38
     parameters = [{
         'name': 'operate',
         'type': 'string',
@@ -35,7 +40,13 @@ class Storage(BaseTool):
     }, {
         'name': 'key',
         'type': 'string',
+<<<<<<< HEAD
         'description': '数据的名称，是一份数据的唯一标识, 存/取/删除数据时 必须提供'
+=======
+        'description':
+        '数据的路径，类似于文件路径，是一份数据的唯一标识，不能为空，默认根目录为`/`。存数据时，应该合理的设计路径，保证路径含义清晰且唯一。',
+        'default': '/'
+>>>>>>> 55547b98313c153c451c04477b4163723219fb38
     }, {
         'name': 'value',
         'type': 'string',
@@ -44,13 +55,10 @@ class Storage(BaseTool):
 
     def __init__(self, cfg: Optional[Dict] = None):
         super().__init__(cfg)
-        self.root = self.cfg.get('path', 'workspace/default_data_path')
+        self.root = self.cfg.get('storage_root_path', DEFAULT_STORAGE_PATH)
         os.makedirs(self.root, exist_ok=True)
-        self.data = {}
-        # load all keys in this path
-        for file in os.listdir(self.root):
-            self.data[file] = None
 
+<<<<<<< HEAD
     def call(self, params: Union[str, dict], **kwargs):
         """
         init one database: one folder
@@ -64,41 +72,56 @@ class Storage(BaseTool):
         #path = params['path']
         #self.init(path)
 
+=======
+    def call(self, params: Union[str, dict], **kwargs) -> str:
+        params = self._verify_json_format_args(params)
+>>>>>>> 55547b98313c153c451c04477b4163723219fb38
         operate = params['operate']
+        key = params.get('key', '/')
+        if key.startswith('/'):
+            key = key[1:]
+
         if operate == 'put':
-            return self.put(params['key'], params['value'])
+            assert 'value' in params
+            return self.put(key, params['value'])
         elif operate == 'get':
-            return self.get(params['key'])
+            return self.get(key)
         elif operate == 'delete':
-            return self.delete(params['key'])
+            return self.delete(key)
         else:
-            return self.scan()
+            return self.scan(key)
 
-    def init(self, path: str):
-        os.makedirs(path, exist_ok=True)
-        self.root = path
-        # load all keys
-        self.data = {}
-        for file in os.listdir(path):
-            self.data[file] = None
+    def put(self, key: str, value: str, path: Optional[str] = None) -> str:
+        path = path or self.root
 
-    def put(self, key: str, value: str):
-        """
-        save one key value pair
-        :param key: str
-        :param value: str
-
-        """
         # one file for one key value pair
+<<<<<<< HEAD
         #key = hash_sha256(key)
+=======
+        path = os.path.join(path, key)
+>>>>>>> 55547b98313c153c451c04477b4163723219fb38
 
-        msg = save_text_to_file(os.path.join(self.root, key), value)
-        if msg == 'SUCCESS':
-            self.data[key] = value
-            return msg
+        path_dir = path[:path.rfind('/') + 1]
+        if path_dir:
+            os.makedirs(path_dir, exist_ok=True)
+
+        save_text_to_file(path, value)
+        return SUCCESS_MESSAGE
+
+    def get(self, key: str, path: Optional[str] = None) -> str:
+        path = path or self.root
+        return read_text_from_file(os.path.join(path, key))
+
+    def delete(self, key, path: Optional[str] = None) -> str:
+        path = path or self.root
+        path = os.path.join(path, key)
+        if os.path.exists(path):
+            os.remove(path)
+            return f'Successfully deleted{key}'
         else:
-            print_traceback()
+            return f'Delete Failed: {key} does not exist'
 
+<<<<<<< HEAD
     def get(self, key: str, re_load: bool = True):
         """
         get one value by key
@@ -137,3 +160,23 @@ class Storage(BaseTool):
         #for key in self.data.keys():
         #    yield [key, self.get(key)]
         return '\n'.join(self.data.keys())
+=======
+    def scan(self, key: str, path: Optional[str] = None) -> str:
+        path = path or self.root
+        path = os.path.join(path, key)
+        if os.path.exists(path):
+            if not os.path.isdir(path):
+                return 'Scan Failed: The scan operation requires passing in a key to a folder path'
+            # All key-value pairs
+            kvs = {}
+            for root, dirs, files in os.walk(path):
+                for file in files:
+                    k = os.path.join(root, file)[len(path):]
+                    if not k.startswith('/'):
+                        k = '/' + k
+                    v = read_text_from_file(os.path.join(root, file))
+                    kvs[k] = v
+            return '\n'.join([f'{k}: {v}' for k, v in kvs.items()])
+        else:
+            return f'Scan Failed: {key} does not exist.'
+>>>>>>> 55547b98313c153c451c04477b4163723219fb38

@@ -9,6 +9,7 @@ import queue
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -29,6 +30,27 @@ from qwen_agent.utils.utils import (extract_code, print_traceback,
 WORK_DIR = os.getenv('M6_CODE_INTERPRETER_WORK_DIR',
                      os.getcwd() + '/workspace/ci_workspace/')
 
+
+def _fix_secure_write_for_code_interpreter():
+    if 'linux' in sys.platform.lower():
+        os.makedirs(WORK_DIR, exist_ok=True)
+        fname = os.path.join(WORK_DIR,
+                             f'test_file_permission_{os.getpid()}.txt')
+        if os.path.exists(fname):
+            os.remove(fname)
+        with os.fdopen(
+                os.open(fname, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o0600),
+                'w') as f:
+            f.write('test')
+        file_mode = stat.S_IMODE(os.stat(fname).st_mode) & 0o6677
+        if file_mode != 0o0600:
+            os.environ['JUPYTER_ALLOW_INSECURE_WRITES'] = '1'
+        if os.path.exists(fname):
+            os.remove(fname)
+
+
+_fix_secure_write_for_code_interpreter()
+
 LAUNCH_KERNEL_PY = """
 from ipykernel import kernelapp as app
 app.launch_new_instance()
@@ -43,6 +65,7 @@ ALIB_FONT_FILE = str(
     'AlibabaPuHuiTi-3-45-Light.ttf')
 
 _KERNEL_CLIENTS: Dict[int, BlockingKernelClient] = {}
+_MISC_SUBPROCESSES: Dict[str, subprocess.Popen] = {}
 
 
 def _start_kernel(pid) -> BlockingKernelClient:
@@ -58,15 +81,18 @@ def _start_kernel(pid) -> BlockingKernelClient:
     with open(launch_kernel_script, 'w') as fout:
         fout.write(LAUNCH_KERNEL_PY)
 
-    kernel_process = subprocess.Popen([
-        sys.executable,
-        launch_kernel_script,
-        '--IPKernelApp.connection_file',
-        connection_file,
-        '--matplotlib=inline',
-        '--quiet',
-    ],
-                                      cwd=WORK_DIR)
+    kernel_process = subprocess.Popen(
+        [
+            sys.executable,
+            launch_kernel_script,
+            '--IPKernelApp.connection_file',
+            connection_file,
+            '--matplotlib=inline',
+            '--quiet',
+        ],
+        cwd=WORK_DIR,
+    )
+    _MISC_SUBPROCESSES[f'kc_{kernel_process.pid}'] = kernel_process
     logger.info(f"INFO: kernel process's PID = {kernel_process.pid}")
 
     # Wait for kernel connection file to be written
@@ -84,23 +110,31 @@ def _start_kernel(pid) -> BlockingKernelClient:
 
     # Client
     kc = BlockingKernelClient(connection_file=connection_file)
-    asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
+    asyncio.set_event_loop_policy(AnyThreadEventLoopPolicy())
     kc.load_connection_file()
     kc.start_channels()
     kc.wait_for_ready()
     return kc
 
 
-def _kill_kernels():
+def _kill_kernels_and_subprocesses(sig_num=None, _frame=None):
     for v in _KERNEL_CLIENTS.values():
         v.shutdown()
     for k in list(_KERNEL_CLIENTS.keys()):
         del _KERNEL_CLIENTS[k]
 
+    for v in _MISC_SUBPROCESSES.values():
+        v.terminate()
+    for k in list(_MISC_SUBPROCESSES.keys()):
+        del _MISC_SUBPROCESSES[k]
 
-atexit.register(_kill_kernels)
-signal.signal(signal.SIGTERM, _kill_kernels)
-signal.signal(signal.SIGINT, _kill_kernels)
+    if sig_num == signal.SIGINT:
+        raise KeyboardInterrupt()
+
+
+atexit.register(_kill_kernels_and_subprocesses)
+signal.signal(signal.SIGTERM, _kill_kernels_and_subprocesses)
+signal.signal(signal.SIGINT, _kill_kernels_and_subprocesses)
 
 
 def _serve_image(image_base64: str) -> str:
@@ -112,25 +146,24 @@ def _serve_image(image_base64: str) -> str:
     bytes_io = io.BytesIO(png_bytes)
     PIL.Image.open(bytes_io).save(local_image_file, 'png')
 
-    STATIC_URL = os.getenv('M6_CODE_INTERPRETER_STATIC_URL',
+    static_url = os.getenv('M6_CODE_INTERPRETER_STATIC_URL',
                            'http://127.0.0.1:7865/static')
 
     # Hotfix: Temporarily generate image URL proxies for code interpreter to display in gradio
     # Todo: Generate real url
-    if STATIC_URL == 'http://127.0.0.1:7865/static':
-        try:
-            # run a fastapi server for image show in gradio demo by http://127.0.0.1:7865/figure_name
-            subprocess.Popen([
-                'python',
-                Path(__file__).absolute().parent / 'resource' /
-                'image_service.py'
-            ])
-        except OSError as ex:
-            logger.warning(ex)
-        except Exception:
-            print_traceback()
+    if static_url == 'http://127.0.0.1:7865/static':
+        if 'image_service' not in _MISC_SUBPROCESSES:
+            try:
+                # run a fastapi server for image show in gradio demo by http://127.0.0.1:7865/figure_name
+                _MISC_SUBPROCESSES['image_service'] = subprocess.Popen([
+                    'python',
+                    Path(__file__).absolute().parent / 'resource' /
+                    'image_service.py'
+                ])
+            except Exception:
+                print_traceback()
 
-    image_url = f'{STATIC_URL}/{image_file}'
+    image_url = f'{static_url}/{image_file}'
 
     return image_url
 
@@ -245,13 +278,12 @@ class CodeInterpreter(BaseTool):
             return ''
         # download file
         if files:
+            os.makedirs(WORK_DIR, exist_ok=True)
             for file in files:
                 try:
                     save_url_to_local_work_dir(file, WORK_DIR)
                 except Exception:
                     print_traceback()
-                    # Since the file may not be useful, do not directly report an error
-                    # logger.warning(f'Failed to download file {file}')
 
         pid: int = os.getpid()
         if pid in _KERNEL_CLIENTS:
@@ -285,24 +317,36 @@ class CodeInterpreter(BaseTool):
         return result if result.strip() else 'Finished execution.'
 
 
-def _get_multiline_input(hint: str) -> str:
-    logger.info(
-        '// Press ENTER to make a new line. Press CTRL-D to end input.')
-    lines = []
-    while True:
+#
+# The _BasePolicy and AnyThreadEventLoopPolicy below are borrowed from Tornado.
+# Ref: https://www.tornadoweb.org/en/stable/_modules/tornado/platform/asyncio.html#AnyThreadEventLoopPolicy
+#
+
+if sys.platform == 'win32' and hasattr(asyncio,
+                                       'WindowsSelectorEventLoopPolicy'):
+    _BasePolicy = asyncio.WindowsSelectorEventLoopPolicy  # type: ignore
+else:
+    _BasePolicy = asyncio.DefaultEventLoopPolicy
+
+
+class AnyThreadEventLoopPolicy(_BasePolicy):  # type: ignore
+    """Event loop policy that allows loop creation on any thread.
+
+    The default `asyncio` event loop policy only automatically creates
+    event loops in the main threads. Other threads must create event
+    loops explicitly or `asyncio.get_event_loop` (and therefore
+    `.IOLoop.current`) will fail. Installing this policy allows event
+    loops to be created automatically on any thread.
+
+    Usage::
+        asyncio.set_event_loop_policy(AnyThreadEventLoopPolicy())
+    """
+
+    def get_event_loop(self) -> asyncio.AbstractEventLoop:
         try:
-            line = input()
-        except EOFError:  # CTRL-D
-            break
-        lines.append(line)
-    logger.info('// Input received.')
-    if lines:
-        return '\n'.join(lines)
-    else:
-        return ''
-
-
-if __name__ == '__main__':
-    tool = CodeInterpreter()
-    while True:
-        logger.info(tool.call(_get_multiline_input('Enter python code:')))
+            return super().get_event_loop()
+        except RuntimeError:
+            # "There is no current event loop in thread %r"
+            loop = self.new_event_loop()
+            self.set_event_loop(loop)
+            return loop
