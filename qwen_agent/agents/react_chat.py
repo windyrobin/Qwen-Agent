@@ -60,11 +60,7 @@ class ReActChat(FnCallAgent):
         ori_messages = messages
         messages = self._preprocess_react_prompt(messages)
 
-<<<<<<< HEAD
-        max_turn = 10
-=======
         num_llm_calls_available = MAX_LLM_CALL_PER_RUN
->>>>>>> 55547b98313c153c451c04477b4163723219fb38
         response = []
         while True and num_llm_calls_available > 0:
             num_llm_calls_available -= 1
@@ -90,26 +86,6 @@ class ReActChat(FnCallAgent):
 
             output = output[-1][CONTENT]
 
-<<<<<<< HEAD
-            print('origin output:', output)
-            use_tool, action, action_input, output = self._detect_tool(output)
-            print('use_tool: ', use_tool)
-            print('action_input: ', action_input)
-            print('output: ', output)
-            if isinstance(
-                    messages[-1][CONTENT],
-                    str) and messages[-1][CONTENT].endswith('\nThought:'):
-                if not output.startswith(' '):
-                    output = ' ' + output
-            else:
-                if not output.startswith('\n'):
-                    output = '\n' + output
-
-            if use_tool:
-                observation = self._call_tool(action, action_input)
-                print('observation is :', observation)
-                observation = f'\nObservation: {observation}\nThought:'
-=======
             use_tool, action, action_input, text = self._detect_tool(output)
 
             if use_tool:
@@ -117,7 +93,6 @@ class ReActChat(FnCallAgent):
                                               action_input,
                                               messages=ori_messages)
                 observation = f'\nObservation: {observation}\nThought: '
->>>>>>> 55547b98313c153c451c04477b4163723219fb38
                 response[-1][CONTENT] += observation
                 print('response:', response)
                 yield response

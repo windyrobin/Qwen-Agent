@@ -18,11 +18,6 @@ def call_tool(plugin_name: str, plugin_args: str) -> str:
 
 
 __all__ = [
-<<<<<<< HEAD
     'BaseTool', 'CodeInterpreter', 'SQLInterpreter','ImageGen', 'AmapWeather', 'TOOL_REGISTRY',
-    'DocParser', 'SimilaritySearch', 'Storage', 'Retrieval'
-=======
-    'BaseTool', 'CodeInterpreter', 'ImageGen', 'AmapWeather', 'TOOL_REGISTRY',
     'DocParser', 'SimilaritySearch', 'Storage', 'Retrieval', 'WebExtractor'
->>>>>>> 55547b98313c153c451c04477b4163723219fb38
 ]

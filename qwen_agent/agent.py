@@ -182,20 +182,6 @@ class Agent(ABC):
         else:
             return json.dumps(tool_result, ensure_ascii=False, indent=4)
 
-<<<<<<< HEAD
-        """
-        tool_name = tool
-        tool_cfg = None
-        if isinstance(tool, dict):
-            tool_name = tool['name']
-            tool_cfg = tool
-        print('tool name:', tool_name)
-        print('tool regisgtry:', TOOL_REGISTRY)
-        if tool_name not in TOOL_REGISTRY:
-            raise NotImplementedError
-        if tool not in self.function_list:
-            self.function_list.append(tool)
-=======
     def _init_tool(self, tool: Union[str, Dict, BaseTool]):
         if isinstance(tool, BaseTool):
             tool_name = tool.name
@@ -218,7 +204,6 @@ class Agent(ABC):
                 logger.warning(
                     f'Repeatedly adding tool {tool_name}, will use the newest tool in function list'
                 )
->>>>>>> 55547b98313c153c451c04477b4163723219fb38
             self.function_map[tool_name] = TOOL_REGISTRY[tool_name](tool_cfg)
 
     def _detect_tool(self, message: Message) -> Tuple[bool, str, str, str]:

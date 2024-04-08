@@ -275,13 +275,6 @@ def bot(history, chosen_plug):
                     'ci'
                 }]
             else:
-<<<<<<< HEAD
-                message = [{'role': 'user', 'content': history[-1][0]}]
-                messages = app_global_para['messages'] + message
-            #func_assistant = ReActChat(function_list=['code_interpreter'],
-            #func_assistant = ReActChat(function_list=['code_interpreter', 'sql_interpreter'],
-            func_assistant = ReActChat(function_list=['code_interpreter', 'sql_interpreter', 'local_cache'],
-=======
                 message = [{
                     'role': 'user',
                     'content': history[-1][0],
@@ -289,8 +282,8 @@ def bot(history, chosen_plug):
                 }]
             messages = keep_only_files_for_name(app_global_para['messages'],
                                                 'ci') + message
-            func_assistant = ReActChat(function_list=['code_interpreter'],
->>>>>>> 55547b98313c153c451c04477b4163723219fb38
+            #func_assistant = ReActChat(function_list=['code_interpreter'],
+            func_assistant = ReActChat(function_list=['code_interpreter', 'sql_interpreter', 'local_cache'],
                                        llm=llm_config)
             try:
                 response = func_assistant.run(messages=messages)

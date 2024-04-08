@@ -21,16 +21,7 @@ class Storage(BaseTool):
     """
     This is a special tool for data storage
     """
-<<<<<<< HEAD
     description = '数据在 本地缓存的实现, 读取、删除、保存、遍历， 支持txt或csv 格式'
-    #parameters = [{
-    #    'name': 'path',
-    #    'type': 'string',
-    #    'description': '数据存储的目录',
-    #}, {
-=======
-    description = '存储和读取数据的工具'
->>>>>>> 55547b98313c153c451c04477b4163723219fb38
     parameters = [{
         'name': 'operate',
         'type': 'string',
@@ -40,13 +31,7 @@ class Storage(BaseTool):
     }, {
         'name': 'key',
         'type': 'string',
-<<<<<<< HEAD
         'description': '数据的名称，是一份数据的唯一标识, 存/取/删除数据时 必须提供'
-=======
-        'description':
-        '数据的路径，类似于文件路径，是一份数据的唯一标识，不能为空，默认根目录为`/`。存数据时，应该合理的设计路径，保证路径含义清晰且唯一。',
-        'default': '/'
->>>>>>> 55547b98313c153c451c04477b4163723219fb38
     }, {
         'name': 'value',
         'type': 'string',
@@ -58,7 +43,6 @@ class Storage(BaseTool):
         self.root = self.cfg.get('storage_root_path', DEFAULT_STORAGE_PATH)
         os.makedirs(self.root, exist_ok=True)
 
-<<<<<<< HEAD
     def call(self, params: Union[str, dict], **kwargs):
         """
         init one database: one folder
@@ -72,10 +56,6 @@ class Storage(BaseTool):
         #path = params['path']
         #self.init(path)
 
-=======
-    def call(self, params: Union[str, dict], **kwargs) -> str:
-        params = self._verify_json_format_args(params)
->>>>>>> 55547b98313c153c451c04477b4163723219fb38
         operate = params['operate']
         key = params.get('key', '/')
         if key.startswith('/'):
@@ -95,12 +75,8 @@ class Storage(BaseTool):
         path = path or self.root
 
         # one file for one key value pair
-<<<<<<< HEAD
         #key = hash_sha256(key)
-=======
-        path = os.path.join(path, key)
->>>>>>> 55547b98313c153c451c04477b4163723219fb38
-
+        #path = os.path.join(path, key)
         path_dir = path[:path.rfind('/') + 1]
         if path_dir:
             os.makedirs(path_dir, exist_ok=True)
@@ -121,7 +97,6 @@ class Storage(BaseTool):
         else:
             return f'Delete Failed: {key} does not exist'
 
-<<<<<<< HEAD
     def get(self, key: str, re_load: bool = True):
         """
         get one value by key
@@ -160,7 +135,7 @@ class Storage(BaseTool):
         #for key in self.data.keys():
         #    yield [key, self.get(key)]
         return '\n'.join(self.data.keys())
-=======
+
     def scan(self, key: str, path: Optional[str] = None) -> str:
         path = path or self.root
         path = os.path.join(path, key)
@@ -179,4 +154,3 @@ class Storage(BaseTool):
             return '\n'.join([f'{k}: {v}' for k, v in kvs.items()])
         else:
             return f'Scan Failed: {key} does not exist.'
->>>>>>> 55547b98313c153c451c04477b4163723219fb38
