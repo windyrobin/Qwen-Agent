@@ -20,8 +20,8 @@ def parse_args():
         '-l',
         '--llm',
         type=str,
-        default='qwen-plus',
-        help='DashScope: qwen-plus, qwen-turbo, qwen-14b-chat, qwen-7b-chat.',
+        default='qwen1.5-72b-chat',
+        help='DashScope: qwen1.5-72b-chat, qwen-plus, qwen-turbo, qwen-14b-chat, qwen-7b-chat.',
     )
     parser.add_argument('-s',
                         '--server_host',
@@ -100,7 +100,8 @@ def main():
     os.environ['M6_CODE_INTERPRETER_WORK_DIR'] = code_interpreter_work_dir
 
     if args.server_host == '0.0.0.0':
-        static_url = get_local_ip()
+        #static_url = get_local_ip()
+        static_url = '106.15.227.217'
     else:
         static_url = args.server_host
     static_url = f'http://{static_url}:{server_config.server.fast_api_port}/static'

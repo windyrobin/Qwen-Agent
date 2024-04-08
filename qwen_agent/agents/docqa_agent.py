@@ -38,5 +38,6 @@ class DocQAAgent(Assistant):
         response = self.doc_qa.run(messages=messages,
                                    lang=lang,
                                    knowledge=_ref)
+        print('reponse by doc qa agent _run:', response)
 
         return response

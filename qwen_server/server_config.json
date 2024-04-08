@@ -6,17 +6,19 @@
         "code_interpreter_ws": "workspace/ci_workspace/"
     },
     "server": {
-        "server_host": "127.0.0.1",
+        "server_host": "0.0.0.0",
         "fast_api_port": 7866,
         "app_in_browser_port": 7863,
         "workstation_port": 7864,
         "model_server": "dashscope",
-        "api_key": "",
-        "llm": "qwen-plus",
+        "api_key": "sk-e3abcf7250794ef1b7b5d56e2fd9d882",
+        "llm": "qwen1.5-72b-chat",
         "max_ref_token": 4000,
         "max_days": 7,
         "functions": [
             "code_interpreter",
+            "sql_interpreter",
+            "local_cache",
             "image_gen"
         ]
     }

@@ -55,7 +55,7 @@ class ReActChat(Assistant):
         *_, last = self.mem.run(messages=messages)
         messages = self._preprocess_react_prompt(messages)
 
-        max_turn = 5
+        max_turn = 10
         response = []
         while True and max_turn > 0:
             max_turn -= 1
@@ -67,7 +67,11 @@ class ReActChat(Assistant):
             assert len(output) == 1 and output[-1][ROLE] == ASSISTANT
             output = output[-1][CONTENT]
 
+            print('origin output:', output)
             use_tool, action, action_input, output = self._detect_tool(output)
+            print('use_tool: ', use_tool)
+            print('action_input: ', action_input)
+            print('output: ', output)
             if isinstance(
                     messages[-1][CONTENT],
                     str) and messages[-1][CONTENT].endswith('\nThought:'):
@@ -79,8 +83,10 @@ class ReActChat(Assistant):
 
             if use_tool:
                 observation = self._call_tool(action, action_input)
+                print('observation is :', observation)
                 observation = f'\nObservation: {observation}\nThought:'
                 response[-1][CONTENT] += observation
+                print('response:', response)
                 yield response
                 if isinstance(messages[-1][CONTENT], list):
                     messages[-1][CONTENT].append(

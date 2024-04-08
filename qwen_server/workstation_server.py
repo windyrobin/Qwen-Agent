@@ -242,13 +242,16 @@ def bot(history, chosen_plug):
             else:
                 message = [{'role': 'user', 'content': history[-1][0]}]
                 messages = app_global_para['messages'] + message
-            func_assistant = ReActChat(function_list=['code_interpreter'],
+            #func_assistant = ReActChat(function_list=['code_interpreter'],
+            #func_assistant = ReActChat(function_list=['code_interpreter', 'sql_interpreter'],
+            func_assistant = ReActChat(function_list=['code_interpreter', 'sql_interpreter', 'local_cache'],
                                        llm=llm_config)
             try:
                 response = func_assistant.run(messages=messages)
                 for chunk in output_beautify.convert_to_full_str_stream(
                         response):
                     history[-1][1] = chunk
+                    #print('cur chuck:', chunk)
                     yield history
             except ModelServiceError:
                 history[-1][1] = '模型调用出错，可能的原因有：未正确配置模型参数，或输入数据不安全等'

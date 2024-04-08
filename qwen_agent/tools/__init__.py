@@ -1,6 +1,7 @@
 from .amap_weather import AmapWeather
 from .base import TOOL_REGISTRY, BaseTool
 from .code_interpreter import CodeInterpreter
+from .sql_interpreter import SQLInterpreter
 from .doc_parser import DocParser
 from .image_gen import ImageGen
 from .retrieval import Retrieval
@@ -16,6 +17,6 @@ def call_tool(plugin_name: str, plugin_args: str) -> str:
 
 
 __all__ = [
-    'BaseTool', 'CodeInterpreter', 'ImageGen', 'AmapWeather', 'TOOL_REGISTRY',
+    'BaseTool', 'CodeInterpreter', 'SQLInterpreter','ImageGen', 'AmapWeather', 'TOOL_REGISTRY',
     'DocParser', 'SimilaritySearch', 'Storage', 'Retrieval'
 ]

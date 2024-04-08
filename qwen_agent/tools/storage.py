@@ -2,9 +2,10 @@ import hashlib
 import os
 from typing import Dict, Optional, Union
 
+import json5
 from qwen_agent.log import logger
 from qwen_agent.tools.base import BaseTool, register_tool
-from qwen_agent.utils.utils import (print_traceback, read_text_from_file,
+from qwen_agent.utils.utils import (extract_code, print_traceback, read_text_from_file,
                                     save_text_to_file)
 
 
@@ -14,18 +15,18 @@ def hash_sha256(key):
     return key
 
 
-@register_tool('storage')
+@register_tool('local_cache')
 class Storage(BaseTool):
     """
     This is a special tool for data storage
     """
-    description = '数据在文件系统中存储和读取'
+    description = '数据在 本地缓存的实现, 读取、删除、保存、遍历， 支持txt或csv 格式'
+    #parameters = [{
+    #    'name': 'path',
+    #    'type': 'string',
+    #    'description': '数据存储的目录',
+    #}, {
     parameters = [{
-        'name': 'path',
-        'type': 'string',
-        'description': '数据存储的目录',
-        'required': True
-    }, {
         'name': 'operate',
         'type': 'string',
         'description':
@@ -34,7 +35,7 @@ class Storage(BaseTool):
     }, {
         'name': 'key',
         'type': 'string',
-        'description': '数据的名称，是一份数据的唯一标识'
+        'description': '数据的名称，是一份数据的唯一标识, 存/取/删除数据时 必须提供'
     }, {
         'name': 'value',
         'type': 'string',
@@ -55,10 +56,13 @@ class Storage(BaseTool):
         init one database: one folder
         :param params:
         """
+        if isinstance(params, str) and params.startswith('```'):
+            params = extract_code(params)
+
         params = self._verify_json_format_args(params)
 
-        path = params['path']
-        self.init(path)
+        #path = params['path']
+        #self.init(path)
 
         operate = params['operate']
         if operate == 'put':
@@ -86,7 +90,7 @@ class Storage(BaseTool):
 
         """
         # one file for one key value pair
-        key = hash_sha256(key)
+        #key = hash_sha256(key)
 
         msg = save_text_to_file(os.path.join(self.root, key), value)
         if msg == 'SUCCESS':
@@ -101,7 +105,7 @@ class Storage(BaseTool):
         :param key: str
         :return: value: str
         """
-        key = hash_sha256(key)
+        #key = hash_sha256(key)
         if key in self.data and self.data[key] and (not re_load):
             return self.data[key]
         try:
@@ -110,6 +114,7 @@ class Storage(BaseTool):
             self.data[key] = content
             return content
         except Exception:
+            print_traceback()
             return ''
 
     def delete(self, key):
@@ -118,7 +123,7 @@ class Storage(BaseTool):
         :param key: str
 
         """
-        key = hash_sha256(key)
+        #key = hash_sha256(key)
         try:
             if key in self.data:
                 os.remove(os.path.join(self.root, key))
@@ -129,5 +134,6 @@ class Storage(BaseTool):
             logger.error(f'Failed to remove: {ex}')
 
     def scan(self):
-        for key in self.data.keys():
-            yield [key, self.get(key)]
+        #for key in self.data.keys():
+        #    yield [key, self.get(key)]
+        return '\n'.join(self.data.keys())

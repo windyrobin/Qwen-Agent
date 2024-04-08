@@ -107,6 +107,8 @@ class Agent(ABC):
         if isinstance(tool, dict):
             tool_name = tool['name']
             tool_cfg = tool
+        print('tool name:', tool_name)
+        print('tool regisgtry:', TOOL_REGISTRY)
         if tool_name not in TOOL_REGISTRY:
             raise NotImplementedError
         if tool not in self.function_list:
