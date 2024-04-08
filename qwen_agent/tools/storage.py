@@ -1,16 +1,11 @@
 import os
 from typing import Dict, Optional, Union
 
-<<<<<<< HEAD
 import json5
 from qwen_agent.log import logger
 from qwen_agent.tools.base import BaseTool, register_tool
 from qwen_agent.utils.utils import (extract_code, print_traceback, read_text_from_file,
                                     save_text_to_file)
-=======
-from qwen_agent.tools.base import BaseTool, register_tool
-from qwen_agent.utils.utils import read_text_from_file, save_text_to_file
->>>>>>> 55547b98313c153c451c04477b4163723219fb38
 
 DEFAULT_STORAGE_PATH = 'workspace/default_data_path'
 SUCCESS_MESSAGE = 'SUCCESS'
