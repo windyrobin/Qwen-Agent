@@ -11,7 +11,7 @@
         "app_in_browser_port": 7863,
         "workstation_port": 7864,
         "model_server": "dashscope",
-        "api_key": "sk-e3abcf7250794ef1b7b5d56e2fd9d882",
+        "api_key": "xxxxxxx-key",
         "llm": "qwen1.5-72b-chat",
         "max_ref_token": 4000,
         "max_days": 7,
